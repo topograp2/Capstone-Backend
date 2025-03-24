@@ -1,4 +1,4 @@
-package com.capstone.bszip.Member.service.dto;
+package com.capstone.bszip.auth.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

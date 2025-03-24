@@ -1,5 +1,6 @@
 package com.capstone.bszip.Member.service;
 
+import com.capstone.bszip.Member.domain.Member;
 import com.capstone.bszip.Member.service.dto.EmailMessage;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
@@ -54,9 +55,9 @@ public class PasswordManagementService {
     // 임시 비밀번호 생성
     public String createCode() {
         SecureRandom random = new SecureRandom();
-        StringBuilder password = new StringBuilder(16);
+        StringBuilder password = new StringBuilder(17);
 
-        for(int i = 0; i < 16; i++) {
+        for(int i = 0; i < 17; i++) {
             int index = random.nextInt(CHARACTERS.length());
             password.append(CHARACTERS.charAt(index));
         }
@@ -68,6 +69,10 @@ public class PasswordManagementService {
         Context context = new Context();
         context.setVariable("code", code);
         return templateEngine.process(type, context);
+    }
+
+    public boolean isItTempPassword(Member member){
+        return member.getTempPassword() != 0;
     }
 
 

@@ -1,5 +1,8 @@
 package com.capstone.bszip.Member.controller;
 
+import com.capstone.bszip.Book.dto.BookSearchResponse;
+import com.capstone.bszip.Member.domain.Member;
+import com.capstone.bszip.Member.service.MemberService;
 import com.capstone.bszip.Member.service.PasswordManagementService;
 import com.capstone.bszip.Member.service.dto.EmailMessage;
 import com.capstone.bszip.Member.service.dto.EmailRequest;
@@ -7,6 +10,7 @@ import com.capstone.bszip.commonDto.ErrorResponse;
 import com.capstone.bszip.commonDto.SuccessResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -14,11 +18,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.HttpClientErrorException;
 
 
@@ -27,8 +29,11 @@ import org.springframework.web.client.HttpClientErrorException;
 @Tag(name="TempPassword", description = "임시 비밀번호")
 public class PasswordManagementController {
     private final PasswordManagementService passwordManagementService;
-    public PasswordManagementController(PasswordManagementService passwordManagementService) {
+    private final MemberService memberService;
+
+    public PasswordManagementController(PasswordManagementService passwordManagementService, MemberService memberService) {
         this.passwordManagementService = passwordManagementService;
+        this.memberService = memberService;
     }
     @Operation(summary = "임시 비밀번호 재설정 및 메일 전송")
     @ApiResponses({
@@ -47,6 +52,7 @@ public class PasswordManagementController {
                     .subject("[서점ZIP] 임시 비밀번호 발급")
                     .build();
             passwordManagementService.sendMail(emailMessage, "password");
+            memberService.setTempPassword(emailRequest.getEmail());
 
             return ResponseEntity.ok(
                     SuccessResponse.builder()
@@ -87,6 +93,56 @@ public class PasswordManagementController {
                             .build()
             );
         }
+    }
+
+    @Operation(summary = "임시 비밀번호인지 아닌지 확인", description = "[로그인 필수] 로그인한 사용자가 임시비밀번호를 사용 중인지 판단할 수 있게끔 합니다.")
+    @ApiResponses(value = {@ApiResponse(responseCode = "200", description = "검색 성공", content = @Content(schema = @Schema(implementation = SuccessResponse.class),
+            examples = {@ExampleObject(
+                    name = "Success example : 임시비밀번호일 경우",
+                    value = """
+                            {
+                               "result": true,
+                               "status": 200,
+                               "message": "임시 비밀번호인지 아닌지 확인",
+                               "data": null
+                            }"""
+            )})),})
+    @GetMapping("/temp-password")
+    public ResponseEntity<?> isItTempPassword(Authentication authentication) {
+        try{
+            Member member = (Member) authentication.getPrincipal();
+            boolean whether = passwordManagementService.isItTempPassword(member);
+            return ResponseEntity.ok(
+                    SuccessResponse.builder()
+                            .result(whether)
+                            .status(HttpServletResponse.SC_OK)
+                            .message("임시 비밀번호인지 아닌지 확인")
+                            .build()
+            );
+        }catch (NullPointerException e){
+            return ResponseEntity.badRequest().body(
+                    ErrorResponse.builder()
+                    .result(false)
+                    .status(HttpServletResponse.SC_BAD_REQUEST)
+                            .message("값을 입력해주세요")
+                    .detail(e.getMessage())
+                    .build()
+            );
+        }
+        catch (AuthenticationException e){
+            return ResponseEntity.status(401).body(
+                    ErrorResponse.builder()
+                    .result(false)
+                    .status(HttpServletResponse.SC_UNAUTHORIZED)
+                    .message("인증되지 않은 사용자입니다.")
+                    .detail(e.getMessage())
+                    .build()
+            );
+        }
+        catch (Exception e){
+            throw new RuntimeException(e);
+        }
+
     }
 
 

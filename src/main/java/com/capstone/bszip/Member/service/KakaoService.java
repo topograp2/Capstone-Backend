@@ -3,14 +3,10 @@ package com.capstone.bszip.Member.service;
 import com.capstone.bszip.Member.domain.Member;
 import com.capstone.bszip.Member.domain.MemberJoinType;
 import com.capstone.bszip.Member.repository.MemberRepository;
-import com.capstone.bszip.Member.service.dto.TokenResponse;
-import com.capstone.bszip.auth.refreshToken.RefreshToken;
-import com.capstone.bszip.auth.refreshToken.RefreshTokenRepository;
+import com.capstone.bszip.auth.dto.TokenResponse;
 import com.capstone.bszip.auth.security.JwtUtil;
-import com.capstone.bszip.commonDto.SuccessResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
@@ -34,8 +30,6 @@ import java.util.Optional;
 public class KakaoService {
 
     private final MemberRepository memberRepository;
-
-    private final RefreshTokenRepository refreshTokenRepository;
 
     private final Map<String, String> temporaryStorage = new HashMap<>(); // 임시 데이터 저장소
 
@@ -142,24 +136,9 @@ public class KakaoService {
 
     }
 
-    public void updateRefreshToken(String email,String refreshToken){
-        Optional<Member> memberOptional = memberRepository.findByEmail(email);
-        if(memberOptional.isPresent()){
-            Member member = memberOptional.get();
-            RefreshToken token = new RefreshToken();
-            token.setMemberId(member.getMemberId());
-            token.setRefreshToken(refreshToken);
-            token.setExpiryDate(Instant.now().plusSeconds(7 * 24 * 60 * 60));
-
-            refreshTokenRepository.save(token);
-        }
-    }
-
     public TokenResponse loginUser(String kakaoEmail){
         String accessToken = JwtUtil.createAccessToken(kakaoEmail);
         String refreshToken = JwtUtil.createRefreshToken(kakaoEmail);
-        //refresh 토큰 db 저장
-        updateRefreshToken(kakaoEmail,refreshToken);
         return new TokenResponse(accessToken, refreshToken);
     }
 }

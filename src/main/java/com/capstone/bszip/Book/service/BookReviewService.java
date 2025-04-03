@@ -2,15 +2,22 @@ package com.capstone.bszip.Book.service;
 
 import com.capstone.bszip.Book.domain.Book;
 import com.capstone.bszip.Book.domain.BookReview;
+import com.capstone.bszip.Book.domain.BookstoreBook;
 import com.capstone.bszip.Book.dto.*;
 import com.capstone.bszip.Book.repository.BookRepository;
 import com.capstone.bszip.Book.repository.BookReviewLikesRepository;
 import com.capstone.bszip.Book.repository.BookReviewRepository;
 import com.capstone.bszip.Book.dto.BooksnapPreviewDto;
+import com.capstone.bszip.Book.repository.BookstoreBookRepository;
+import com.capstone.bszip.Bookstore.domain.Bookstore;
+import com.capstone.bszip.Bookstore.repository.BookstoreRepository;
 import com.capstone.bszip.Member.domain.Member;
+import com.capstone.bszip.cloudinary.service.CloudinaryService;
+import com.capstone.bszip.commonDto.exception.ConflictException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
@@ -23,6 +30,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.UriComponents;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -37,22 +45,36 @@ import java.util.stream.Collectors;
 public class BookReviewService {
     private final BookRepository bookRepository;
     private final BookReviewRepository bookReviewRepository;
+    private final CloudinaryService  cloudinaryService;
     private final ObjectMapper objectMapper;
     private final BookReviewLikeService bookReviewLikeService;
     private final RedisTemplate<String, Object> redisTemplate;
     private final BookReviewLikesRepository bookReviewLikesRepository;
+    private final BookstoreBookRepository bookstoreBookRepository;
+    private final BookstoreRepository bookstoreRepository;
     @Value("${kakao.client.id}")
     private String kakaoApiKey;
     private static final String BOOK_REVIEW_LIKES_KEY = "book_review_likes:";
     private static final String LAST7DAYS_BOOK_REVIEW_LIKES_KEY = "last7days_book_review_likes:";
 
-    public BookReviewService(BookRepository bookRepository, ObjectMapper objectMapper, BookReviewRepository bookReviewRepository, BookReviewLikeService bookReviewLikeService, BookReviewLikesRepository bookReviewLikesRepository, RedisTemplate<String, Object> redisTemplate) {
+    public BookReviewService(BookRepository bookRepository,
+                             ObjectMapper objectMapper,
+                             BookReviewRepository bookReviewRepository,
+                             BookReviewLikeService bookReviewLikeService,
+                             BookReviewLikesRepository bookReviewLikesRepository,
+                             RedisTemplate<String, Object> redisTemplate,
+                             BookstoreBookRepository bookstoreBookRepository,
+                             BookstoreRepository bookstoreRepository,
+                             CloudinaryService cloudinaryService) {
         this.bookRepository = bookRepository;
         this.objectMapper = objectMapper;
         this.bookReviewRepository = bookReviewRepository;
         this.bookReviewLikeService = bookReviewLikeService;
         this.bookReviewLikesRepository = bookReviewLikesRepository;
         this.redisTemplate = redisTemplate;
+        this.bookstoreBookRepository = bookstoreBookRepository;
+        this.bookstoreRepository = bookstoreRepository;
+        this.cloudinaryService = cloudinaryService;
     }
 
     // kakao book api에서 책 제목로 검색된 책 정보 json 가져오기 -> 책제목 검색이랑 작가 검색이랑 너무 공통되는 부분이 많아서 걍 통일시켜야 될 거 같으다...
@@ -173,7 +195,7 @@ public class BookReviewService {
 
     // isbn코드를 통해 db에 해당 책 있는지 판별하는 메서드
     public boolean existsByIsbn(Long isbn) {
-        return bookRepository.existsByBookId(isbn);
+        return bookRepository.existsByIsbn(isbn);
     }
 
     // isbn으로 책 찾기
@@ -204,8 +226,8 @@ public class BookReviewService {
             throw new RuntimeException(e);
         }
     }
-    // 검색된 결과로 book 객체 만들기
-    public Book makeBook(String bookJson){
+    // 검색된 결과로 book 객체 만들고 저장
+    public void saveBookByKakaoSearch(String bookJson){
         try{
             ObjectMapper objectMapper = new ObjectMapper();
             JsonNode rootNode = objectMapper.readTree(bookJson);
@@ -223,7 +245,16 @@ public class BookReviewService {
                 authors.add(authorNode.asText());
             }
 
-            return new Book(bookId, bookName, publisher, authors, bookImageUrl, content);
+            Book book = Book.builder()
+                    .isbn(bookId)
+                    .bookName(bookName)
+                    .publisher(publisher)
+                    .authors(authors)
+                    .content(content)
+                    .bookImageUrl(bookImageUrl)
+                    .bookType(BookType.normal)
+                    .build();
+            bookRepository.save(book);
 
         }catch (Exception e){
             throw new RuntimeException("북 객체 만들기 실패: "+e);
@@ -241,7 +272,7 @@ public class BookReviewService {
     }
 
     public Book getBookByIsbn(Long isbn){
-        return bookRepository.findByBookId(isbn).orElseThrow(() -> new IllegalArgumentException("책을 찾을 수 없습니다."));
+        return bookRepository.findByIsbn(isbn).orElseThrow(() -> new IllegalArgumentException("책을 찾을 수 없습니다."));
     }
 
 
@@ -302,12 +333,28 @@ public class BookReviewService {
                         isLiked = bookReviewLikesRepository.existsBookReviewLikesByBookReviewAndMember(bookReview, member);
                     }
                     Book book = bookReview.getBook();
+                    List<BookStoreDto> bookStoreDtos = null;
+                    if(book.getBookType().equals(BookType.indep) && !book.getBookstoreBookList().isEmpty()){
+                        bookStoreDtos = book.getBookstoreBookList().stream().map(bookstoreBook ->
+                                {
+                                    Bookstore bookstore = bookstoreBook.getBookstore();
+                                    String bookStoreName = bookstore.getName();
+                                    Long bookStoreId = bookstore.getBookstoreId();
+                                    return BookStoreDto.builder()
+                                            .bookStoreId(bookStoreId)
+                                            .bookStoreName(bookStoreName)
+                                            .build();
+                                }
+                        ).toList();;
+                    }
                     boolean isLikes = bookReviewLikesRepository.existsBookReviewLikesByBookReviewAndMember(bookReview, member);
                     BookInfoDto bookInfoDto = BookInfoDto.builder()
-                            .isbn(book.getBookId().toString())
+                            .bookId(book.getBookId().toString())
                             .title(book.getBookName())
+                            .bookType(book.getBookType())
                             .bookImageUrl(book.getBookImageUrl())
                             .authors(book.getAuthors())
+                            .bookStores(bookStoreDtos)
                             .publisher(book.getPublisher())
                             .build();
 
@@ -374,11 +421,27 @@ public class BookReviewService {
                         isLiked = bookReviewLikesRepository.existsBookReviewLikesByBookReviewAndMember(bookReview, member);
                     }
                     Book book = bookReview.getBook();
+                    List<BookStoreDto> bookStoreDtos = null;
+                    if(book.getBookType().equals(BookType.indep) && !book.getBookstoreBookList().isEmpty()){
+                        bookStoreDtos = book.getBookstoreBookList().stream().map(bookstoreBook ->
+                                {
+                                    Bookstore bookstore = bookstoreBook.getBookstore();
+                                    String bookStoreName = bookstore.getName();
+                                    Long bookStoreId = bookstore.getBookstoreId();
+                                    return BookStoreDto.builder()
+                                            .bookStoreId(bookStoreId)
+                                            .bookStoreName(bookStoreName)
+                                            .build();
+                                }
+                                ).toList();;
+                    }
                     BookInfoDto bookInfoDto = BookInfoDto.builder()
-                            .isbn(book.getBookId().toString())
+                            .bookId(book.getBookId().toString())
                             .title(book.getBookName())
                             .bookImageUrl(book.getBookImageUrl())
                             .authors(book.getAuthors())
+                            .bookStores(bookStoreDtos)
+                            .bookType(book.getBookType())
                             .publisher(book.getPublisher())
                             .build();
 
@@ -399,5 +462,44 @@ public class BookReviewService {
         return new PageImpl<>(reviewDtos, pageable, redisTemplate.opsForZSet().size(key));
 
     }
+
+    public Book findBookByBookId(Long bookId) {
+            return bookRepository.findByBookId(bookId).orElseThrow(()-> new RuntimeException("Book not found"));
+    }
+
+    public void registerBookInBookstores(Book book, List<Long> bookstoreIds) {
+        for(Long bookstoreId : bookstoreIds) {
+            Bookstore bookstore = bookstoreRepository.findById(bookstoreId).orElseThrow(()-> new RuntimeException("Bookstore not found"));
+            if(bookstoreBookRepository.existsByBookAndBookstore(book, bookstore)){
+                throw new ConflictException(bookstore.getName()+ "은(는) 이미 추가되어 있는 서점입니다.");
+            }
+            BookstoreBook bookstoreBook = BookstoreBook.builder()
+                    .book(book)
+                    .bookstore(bookstore)
+                    .build();
+            bookstoreBookRepository.save(bookstoreBook);
+        }
+    }
+
+    @Transactional
+    public Book saveIndepBook(BookReviewRequest.BookCreate bookReviewRequest, MultipartFile thumbnail) {
+        String title = bookReviewRequest.getTitle();
+        String authorsString = bookReviewRequest.getAuthorsString();
+        List<Long> bookstoreIds = bookReviewRequest.getBookstoreIds();
+        String cloudinaryFolderName = "indep_books_image";
+        List<String> authors = Arrays.asList(authorsString.split(",\\s*|/"));
+
+
+        Book book = Book.builder()
+                .bookType(BookType.indep)
+                .bookName(title)
+                .authors(authors)
+                .bookImageUrl(cloudinaryService.uploadfile(thumbnail, cloudinaryFolderName))
+                .build();
+
+        bookRepository.save(book);
+            // 서점 저장
+        return book;
+        }
 
 }

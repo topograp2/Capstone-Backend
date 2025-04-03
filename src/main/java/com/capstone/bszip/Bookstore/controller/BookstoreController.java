@@ -2,8 +2,12 @@ package com.capstone.bszip.Bookstore.controller;
 
 import com.capstone.bszip.Bookstore.domain.Bookstore;
 import com.capstone.bszip.Bookstore.domain.BookstoreCategory;
+import com.capstone.bszip.Bookstore.service.BookstoreReviewService;
 import com.capstone.bszip.Bookstore.service.BookstoreService;
+import com.capstone.bszip.Bookstore.service.dto.BookstoreDetailResponse;
+import com.capstone.bszip.Bookstore.service.dto.BookstoreDetailWithReviews;
 import com.capstone.bszip.Bookstore.service.dto.BookstoreResponse;
+import com.capstone.bszip.Bookstore.service.dto.BookstoreReviewResponse;
 import com.capstone.bszip.Member.domain.Member;
 import com.capstone.bszip.commonDto.ErrorResponse;
 import com.capstone.bszip.commonDto.SuccessResponse;
@@ -34,6 +38,7 @@ import java.util.Map;
 public class BookstoreController {
 
     private final BookstoreService bookstoreService;
+    private final BookstoreReviewService bookstoreReviewService;
 
     @Operation(summary = "서점 검색", description = "검색창에서 서점을 이름,주소로 검색합니다.")
     @ApiResponses(value = {
@@ -52,7 +57,7 @@ public class BookstoreController {
                                               @RequestParam double lat, @RequestParam double lng) {
         try {
             List<BookstoreResponse> bookstores = bookstoreService.searchBookstores(keyword,member,lat,lng);
-            if (bookstores.isEmpty()) {
+            /*if (bookstores.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(ErrorResponse.builder()
                                 .result(false)
@@ -60,7 +65,7 @@ public class BookstoreController {
                                 .message("검색 결과가 없습니다.")
                                 .detail(keyword+" 에 해당하는 서점이 없습니다.")
                                 .build());
-            }
+            }*/
             return ResponseEntity.ok(SuccessResponse.<List<BookstoreResponse>>builder()
                     .result(true)
                     .status(HttpStatus.OK.value())
@@ -131,7 +136,7 @@ public class BookstoreController {
 
     @Operation(
             summary = "서점 찜하기/찜 취소",
-            description = "특정 서점에 대해 찜하기 또는 찜 취소를 수행합니다."
+            description = "[로그인 필수] 특정 서점에 대해 찜하기 또는 찜 취소를 수행합니다."
     )
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "성공적으로 찜하기/찜 취소 수행"),
@@ -180,7 +185,7 @@ public class BookstoreController {
 
     @Operation(
             summary = "찜한 서점 목록 조회",
-            description = "현재 로그인한 사용자가 찜한 서점 목록을 반환합니다."
+            description = "[로그인 필수] 사용자가 찜한 서점 목록을 반환합니다."
     )
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "성공적으로 찜한 서점 목록 반환"),
@@ -227,5 +232,48 @@ public class BookstoreController {
                             .detail(e.getMessage())
                             .build());
         }
+    }
+    @Operation(
+            summary = "서점 상세 조회",
+            description = "특정 서점의 상세 정보 및 리뷰 목록을 조회합니다."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "서점 상세 정보 및 리뷰 조회 성공",
+                    content = @Content(schema = @Schema(implementation = BookstoreDetailWithReviews.class))),
+            @ApiResponse(responseCode = "500", description = "서버 오류 발생",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @GetMapping("/{bookstoreId}")
+    public ResponseEntity<?> getBookstoreDetail(@PathVariable Long bookstoreId,
+                                                @AuthenticationPrincipal Member member){
+        try {
+            BookstoreDetailResponse bookstoreDetail = bookstoreService.getBookstoreDetail(member, bookstoreId);
+            List<BookstoreReviewResponse> reviewList = bookstoreReviewService.getReviewsByBookstoreId(bookstoreId);
+
+            return ResponseEntity.ok(SuccessResponse.<BookstoreDetailWithReviews>builder()
+                    .result(true)
+                    .status(HttpStatus.OK.value())
+                    .message("서점 상세 정보 및 리뷰 조회 성공")
+                    .data(new BookstoreDetailWithReviews(bookstoreDetail,reviewList))
+                    .build());
+        } catch (EntityNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ErrorResponse.builder()
+                            .result(false)
+                            .status(HttpStatus.NOT_FOUND.value())
+                            .message("서점 id 오류")
+                            .detail(e.getMessage())
+                            .build());
+        }catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ErrorResponse.builder()
+                            .result(false)
+                            .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
+                            .message("서버 오류가 발생했습니다.")
+                            .detail(e.getMessage())
+                            .build());
+        }
+
+
     }
 }

@@ -1,10 +1,8 @@
 package com.capstone.bszip.Book.domain;
 
+import com.capstone.bszip.Book.dto.BookType;
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.ToString;
+import lombok.*;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.util.ArrayList;
@@ -14,20 +12,28 @@ import java.util.List;
 @EntityListeners(AuditingEntityListener.class)
 @NoArgsConstructor
 @Getter
-@ToString(exclude = {"bookReviews", "pickedBooks"})
+@ToString(exclude = {"bookReviews", "pickedBooks", "bookstoreBookList"})
+@Builder
+@AllArgsConstructor(access = AccessLevel.PACKAGE)
 @Table(name="Books")
 public class Book {
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "book_id")
     private Long bookId;
+
+    @Column(name = "isbn")
+    private Long isbn;
 
     @Column(name = "book_name", nullable = false)
     private String bookName;
 
-    @Column(name = "publisher", nullable = false)
+    @Column(name = "publisher", nullable = true)
     private String publisher;
 
-    @Column(name = "author", nullable = false)
+    @Column(name = "author", nullable = true)
+    @ElementCollection
+    @CollectionTable(name = "book_authors", joinColumns = @JoinColumn(name = "book_id"))
     private List<String> authors = new ArrayList<>();
 
     @Column(name = "book_image_url", nullable = true)
@@ -42,12 +48,12 @@ public class Book {
     @OneToMany(mappedBy = "book", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PickedBook> pickedBooks = new ArrayList<>();
 
-    public Book(Long bookId, String bookName, String publisher, List<String> authors, String bookImageUrl, String content) {
-        this.bookId = bookId;
-        this.bookName = bookName;
-        this.publisher = publisher;
-        this.authors = authors;
-        this.bookImageUrl = bookImageUrl;
-        this.content = content;
-    }
+
+    @Column(name = "book_type", nullable = false)
+    @Enumerated(EnumType.STRING)
+    private BookType bookType;
+
+    @OneToMany(mappedBy = "book", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<BookstoreBook> bookstoreBookList = new ArrayList<>();
+
 }

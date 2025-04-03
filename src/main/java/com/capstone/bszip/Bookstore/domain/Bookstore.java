@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Entity
 @Data
 @Builder(toBuilder = true) // toBuilder = true 옵션 추가
@@ -53,4 +55,7 @@ public class Bookstore {
     public Bookstore updateRating(double newRating) {
         return this.toBuilder().rating(newRating).build();
     }
+
+    @OneToMany(mappedBy = "bookstore", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<BookstoreReview> bookstoreReviews;
 }

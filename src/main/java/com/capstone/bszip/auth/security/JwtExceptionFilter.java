@@ -22,11 +22,13 @@ public class JwtExceptionFilter extends OncePerRequestFilter {
         try{
             filterChain.doFilter(request,response);
         }catch (ExpiredJwtException e){
-            AuthErrorResponseUtil.setErrorResponse(response, HttpStatus.UNAUTHORIZED,e.getMessage());
+            AuthErrorResponseUtil.setErrorResponse(response, HttpStatus.UNAUTHORIZED,"JWT 토큰 만료: " + e.getMessage());
         } catch (JwtException e) {
-            AuthErrorResponseUtil.setErrorResponse(response, HttpStatus.UNAUTHORIZED,e.getMessage());
+            AuthErrorResponseUtil.setErrorResponse(response, HttpStatus.UNAUTHORIZED,"JWT 오류: " + e.getMessage());
         } catch (Exception e) {
-            AuthErrorResponseUtil.setErrorResponse(response, HttpStatus.UNAUTHORIZED,e.getMessage());
+            //AuthErrorResponseUtil.setErrorResponse(response, HttpStatus.UNAUTHORIZED,e.getMessage());
+            // JWT 관련 없는 예외는 필터 체인으로 넘김
+            throw e;
         }
     }
 }

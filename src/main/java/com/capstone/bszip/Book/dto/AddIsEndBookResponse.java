@@ -1,10 +1,7 @@
 package com.capstone.bszip.Book.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
 import java.util.List;
 
@@ -12,6 +9,7 @@ import java.util.List;
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
+@Builder
 @Schema(description = "끝까지 포함된 책 data 인지 확인 + 기존 책 response 추가한 DTO")
 public class AddIsEndBookResponse {
 
@@ -19,5 +17,5 @@ public class AddIsEndBookResponse {
     private Boolean isEnd;
 
     @Schema(description = "기존 책 response")
-    private List<BookSearchResponse> bookData;
+    private List<?> bookData;
 }
